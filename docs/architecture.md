@@ -1,57 +1,291 @@
-# StructuraLab architecture
 
-## Architectural boundaries
+# StructuraLab Architecture
 
-1. **Domain model** — units, geometry, materials, sections, supports, loads and structural entities. It must not depend on the API or user interface.
-2. **Analysis engine** — element formulations, matrix assembly, solution strategies and result recovery. Solver assumptions are explicit.
-3. **Design-code engine** — edition-specific ACI provisions, applicability rules, strength calculations and detailing checks. It consumes analysis demands but does not alter solver results.
-4. **Verification layer** — unit tests, analytical solutions, published benchmarks where licensing permits, regression fixtures and independent cross-checks.
-5. **Application layer** — API, persistence, project management, visualisation and reporting. It orchestrates domain services but contains no engineering equations.
-6. **Interoperability** — import/export adapters and optional OpenSeesPy comparison workflows. External solvers are comparison tools, not silent authorities.
+## 1. Project scope
 
-## Initial data flow
+StructuraLab is an auditable structural analysis and engineering software
+platform. Its initial implementation focuses on transparent, testable
+structural analysis rather than attempting to implement every engineering
+workflow at once.
 
-Project input -> validated domain model -> load case -> analysis solver -> equilibrium and stability checks -> result object -> design demand extraction -> ACI design checks -> report with assumptions and traceable references.
+Version 0.5.0 builds on the 2D linear-elastic frame solver introduced in
+earlier versions. It strengthens model validation, introduces global
+equilibrium auditing, and expands independent verification.
 
-## Initial solver
+The architecture is intended to evolve incrementally. Components should be
+introduced when they have implemented functionality rather than creating
+empty packages for features that are only planned.
 
-The first solver is a 2D, first-order, linear-elastic Euler-Bernoulli frame formulation. Each node has [ux, uy, rz]. Element stiffness is formed in local coordinates and transformed into global coordinates. Essential restraints are applied by partitioning the global system into free and restrained DOFs.
+## 2. Architectural boundaries
 
-The solver accepts nodal actions and constant member loads in local element axes. Uniform member loads are converted to consistent equivalent nodal loads for global assembly; local member-end actions are recovered after solution. Member point loads, partial-span or varying loads, releases, support settlements, P-Delta effects, shear deformation, nonlinear response, and 3D behaviour remain outside this milestone.
+The long-term architecture is organised around the following responsibilities.
 
-## Planned package layout
+1. **Domain model** — structural geometry, nodes, materials, sections,
+   elements, restraints, and applied loads. The model defines the structural
+   system independently of user interfaces.
 
-- `domain/`: canonical model entities and units
-- `analysis/`: elements, assembly, solvers and result recovery
-- `loads/`: load cases, patterns and combinations
-- `design/aci318/`: edition-pinned design provisions
-- `verification/`: analytical and benchmark cases
-- `reporting/`: traceable engineering reports
-- `api/` and `web/`: application interfaces
+2. **Analysis engine** — element formulations, stiffness assembly, boundary
+   conditions, solution procedures, and recovery of structural results.
 
-The current scaffold uses a smaller layout; packages will be split as features are introduced rather than creating empty directories prematurely.
+3. **Load management** — independently named load cases, user-defined linear
+   load combinations, and automatic generation of member self-weight.
 
-## Load-case and combination layer (v0.3.0)
+4. **Validation and verification** — input validation, equilibrium auditing,
+   analytical benchmarks, regression tests, and independent solver comparisons.
 
-`FrameModel` stores independently named load cases. The existing top-level nodal and member-load dictionaries are retained as the reserved `default` case for backward compatibility. `LoadCombination` is a linear mapping from case names to user-supplied factors. `analyze_combinations` assembles each combination into a separate temporary model, solves it independently, and returns analysis results and sampled local member-force diagrams. The source model is not mutated.
+5. **Design-code engine** — future edition-specific design provisions,
+   applicability checks, strength calculations, and detailing requirements.
+   Design calculations must remain separate from the analysis solver.
 
-Self-weight is generated per element from `density * area * gravity`. The global gravity vector is transformed into the member's local axes, so inclined members receive both local axial and transverse components. A missing/zero density is a hard error when self-weight is requested. No code-prescribed load factors are embedded in this generic combination mechanism.
+6. **Application and reporting** — future project management, persistence,
+   visualisation, APIs, and engineering reports.
 
-## Independent verification layer (v0.4.0)
+7. **Interoperability** — import/export adapters and independent comparisons
+   with external structural analysis tools such as OpenSeesPy.
 
-The verification layer now includes executable comparisons against OpenSeesPy. OpenSeesPy is an independent reference engine; it does not replace StructuraLab's solver or silently override its results.
+External solver results are used as independent comparisons. They do not
+silently replace StructuraLab's own analysis results.
 
-The initial regression benchmarks model a 2D Euler-Bernoulli cantilever with:
+## 3. Current implementation
 
-- A vertical nodal point load at the free end.
-- A constant transverse uniform member load.
+The current source tree uses a compact Python package:
 
-Both models use matching geometry, material properties, section properties, boundary conditions, and loading between the two solvers.
+- `src/structuralab/model.py` — structural entities, model data, input
+  validation, and load definitions.
+- `src/structuralab/solver.py` — linear-static frame analysis, stiffness
+  assembly, solution, reactions, and local member-end forces.
+- `src/structuralab/loadcases.py` — load combinations and analysis of
+  combinations, including sampled member-force diagrams.
+- `src/structuralab/equilibrium.py` — global force and moment equilibrium
+  auditing.
+- `tests/` — model validation, solver, load-case, equilibrium, and independent
+  verification tests.
 
-The verification tests compare all three free-node displacement components and all three fixed-node reaction components. Selected vertical displacement, vertical reaction, and support moment results are also checked against analytical cantilever solutions.
+This layout is deliberately smaller than the long-term architecture.
+Responsibilities can be extracted into dedicated packages as the platform
+grows.
 
-Cross-solver comparison tolerances are relative 1e-8, with absolute tolerances of 1e-10 for displacements and 1e-6 for reactions. Analytical checks use relative tolerance 1e-10.
+## 4. Structural model and validation
 
-The tests are located in `tests/test_openseespy_verification.py`. OpenSeesPy is provided through the optional `verification` dependency group. CI installs both development and verification extras so the independent benchmarks run automatically.
+`FrameModel` represents a two-dimensional structural frame.
 
-This verification scope is intentionally limited. It does not yet cover arbitrary frame topologies, inclined members, all distributed-load orientations, releases, support settlements, nonlinear analysis, or 3D behaviour.
+Each node has three degrees of freedom:
+
+- `ux` — global horizontal displacement.
+- `uy` — global vertical displacement.
+- `rz` — in-plane rotation.
+
+The model stores nodes, frame elements, materials, sections, restraints,
+nodal loads, and distributed member loads.
+
+Model validation checks structural input consistency before analysis. This
+includes:
+
+- Node identifiers and finite coordinates.
+- Material and section names and properties.
+- Element identifiers and references to existing nodes, materials, and
+  sections.
+- Non-zero element lengths.
+- Restraint definitions and their Boolean degrees of freedom.
+- Load-case names, load references, vector dimensions, and finite values.
+
+Validation checks input integrity. It does not establish that a structure is
+stable or suitable for construction. A model with insufficient restraints
+may pass input validation but still produce an unstable analysis system.
+
+## 5. Analysis solver
+
+The initial analysis engine implements a two-dimensional, first-order,
+small-displacement, linear-elastic Euler-Bernoulli frame formulation.
+
+Element stiffness matrices are formed in local coordinates and transformed
+into global coordinates. The solver assembles the global stiffness matrix
+and load vector, applies essential restraints, and solves for the free
+degrees of freedom.
+
+The solver recovers:
+
+- Nodal displacements.
+- Support reactions.
+- The assembled global stiffness matrix.
+- The assembled global load vector.
+- Local element-end forces.
+
+The global load vector includes nodal loads and consistent equivalent nodal
+loads generated from uniform member loads.
+
+The current implementation supports nodal actions and constant distributed
+member loads in local element axes.
+
+The following capabilities are outside the current solver scope:
+
+- Three-dimensional structural analysis.
+- Geometric and material nonlinear analysis.
+- P-Delta effects and other second-order analysis.
+- Shear-deformable beam formulations.
+- Member releases and connection flexibility.
+- Support settlements.
+- Member point loads and partial-span or varying distributed loads.
+- Automated reinforced-concrete member design.
+
+These features require separate implementation and verification.
+
+## 6. Load cases, combinations, and self-weight
+
+`FrameModel` supports independently named load cases.
+
+The original top-level nodal and member-load dictionaries are retained as
+the reserved `default` load case for backward compatibility.
+
+`LoadCombination` represents a user-defined linear mapping of load-case
+names to numerical factors.
+
+`analyze_combinations` evaluates combinations independently by assembling
+each combination into a temporary model and solving it separately. The
+source model is not mutated.
+
+The analysis workflow also supports sampled local member-force diagrams.
+
+Automatic member self-weight is generated using:
+
+`density * area * gravity`
+
+The global gravity vector is transformed into each member's local axes.
+Consequently, inclined members can receive both local axial and transverse
+self-weight components.
+
+A missing or zero material density is an error when self-weight is requested.
+
+The generic load-combination mechanism does not embed code-prescribed load
+factors. Factors are supplied by the user.
+
+## 7. Global equilibrium auditing
+
+Version 0.5.0 introduces a separate global equilibrium audit.
+
+The audit evaluates the assembled global load vector and the support
+reactions returned by the analysis result.
+
+For a two-dimensional frame, it checks:
+
+- Horizontal force equilibrium.
+- Vertical force equilibrium.
+- Moment equilibrium about the global origin.
+
+The moment calculation accounts for the moment arms of horizontal and
+vertical forces at their respective node coordinates.
+
+The audit reports the residual for each equilibrium equation and its
+corresponding tolerance.
+
+The tolerances combine configurable absolute and relative components:
+
+` tolerance = absolute_tolerance + relative_tolerance * sum(abs(contributions)) `
+
+The result includes an `is_equilibrated` status indicating whether all three
+residuals are within their calculated tolerances.
+
+The audit also checks relevant result consistency, including node ordering,
+global load-vector dimensions, and support-reaction references.
+
+Equilibrium auditing is a numerical consistency check. It does not prove
+that the structural model is correct, that the structure is stable, or that
+the design satisfies an engineering code.
+
+## 8. Verification strategy
+
+StructuraLab uses multiple levels of verification.
+
+### Unit and regression tests
+
+Tests cover model construction, validation rules, load handling, solver
+behaviour, load combinations, and equilibrium auditing.
+
+Regression tests help ensure that changes to existing functionality do not
+silently alter established results.
+
+### Analytical comparisons
+
+Selected frame problems are compared against known analytical solutions.
+These provide independent checks for displacements, reactions, and member
+response.
+
+### OpenSeesPy comparisons
+
+Where OpenSeesPy is installed, independent verification tests compare
+StructuraLab results against separately constructed OpenSeesPy models.
+
+The current verification suite includes:
+
+- A horizontal cantilever with a tip point load.
+- A horizontal cantilever with a uniform transverse load.
+- An inclined cantilever subjected to combined global horizontal and
+  vertical point loads.
+
+These comparisons provide additional confidence in the implementation.
+They do not constitute formal certification or proof of correctness for
+every possible structural configuration.
+
+OpenSeesPy is an optional verification dependency rather than a requirement
+for using the core analysis package.
+
+## 9. Units and conventions
+
+The current implementation uses SI units:
+
+- Length: metres (m).
+- Force: newtons (N).
+- Stress and elastic modulus: pascals (Pa).
+- Density: kilograms per cubic metre (kg/m³).
+- Rotation: radians.
+
+The global coordinate system is two-dimensional. Nodal degrees of freedom
+are ordered as horizontal displacement, vertical displacement, and
+in-plane rotation.
+
+Member distributed loads are defined in local element axes. Transformations
+between local and global coordinates are performed by the analysis engine.
+
+Users are responsible for supplying dimensionally consistent input data.
+
+## 10. Future development
+
+The following are architectural directions, not claims of implemented
+functionality.
+
+Potential future development includes:
+
+- Additional element formulations and load types.
+- More extensive stability and numerical diagnostics.
+- Three-dimensional structural analysis.
+- Second-order and nonlinear analysis.
+- Edition-pinned ACI 318 reinforced-concrete design.
+- Reinforcement detailing and design reporting.
+- Project persistence and structured engineering reports.
+- Visualisation and application interfaces.
+- Additional independent analytical and published benchmark problems.
+
+A future package layout may separate responsibilities into:
+
+- `domain/` — structural entities and units.
+- `analysis/` — elements, assembly, solvers, and result recovery.
+- `loads/` — load cases, patterns, and combinations.
+- `design/aci318/` — edition-specific design provisions.
+- `verification/` — analytical and benchmark cases.
+- `reporting/` — traceable engineering reports.
+- `api/` and `web/` — application interfaces.
+
+These packages should be introduced when their functionality is implemented.
+
+## 11. Engineering limitations and responsibility
+
+StructuraLab is an early-stage engineering software project.
+
+It is not approved for structural design, permitting, construction, or
+independent professional certification.
+
+Analysis results must be independently checked by a qualified structural
+engineer before being used in engineering decisions.
+
+No ACI 318 compliance or automated reinforced-concrete design capability
+is claimed by the current release.

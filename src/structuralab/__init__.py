@@ -1,3 +1,4 @@
-"""StructuraLab: auditable structural analysis and design tools."""
 
-__version__ = "0.4.0"
+"""StructuraLab: auditable structural analysis and engineering tools."""
+
+__version__ = "0.5.0"
