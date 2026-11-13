@@ -102,7 +102,6 @@ def solve_linear_static(model: FrameModel) -> AnalysisResult:
         start = 3 * node_index[node_id]
         restrained.extend(start + dof for dof, is_fixed in enumerate(flags) if is_fixed)
     free = np.array([i for i in range(ndof) if i not in set(restrained)], dtype=int)
-    fixed = np.array(sorted(restrained), dtype=int)
 
     if free.size == 0:
         displacement = np.zeros(ndof)
