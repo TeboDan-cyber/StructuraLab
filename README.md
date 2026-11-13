@@ -57,11 +57,12 @@ python -m pip install -e ".[dev]"
 pytest
 ```
 
-OpenSeesPy is an optional dependency for the independent verification tests.
-Install it separately if you want to run those benchmarks:
+To run the independent OpenSeesPy verification tests as well, install the
+optional verification dependency:
 
 ```bash
-python -m pip install openseespy
+python -m pip install -e ".[dev,verification]"
+python -m pytest -v
 ```
 
 ## Load cases and combinations
