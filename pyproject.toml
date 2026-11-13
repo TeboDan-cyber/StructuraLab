@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "structuralab"
-version = "0.3.0"
+version = "0.4.0"
 description = "An auditable structural analysis and reinforced-concrete design platform."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ dependencies = ["numpy>=1.26"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.5", "mypy>=1.10"]
+verification = ["openseespy>=3.8.0.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
