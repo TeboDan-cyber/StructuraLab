@@ -1,18 +1,22 @@
+
 # StructuraLab
 
 **An integrated, auditable structural engineering analysis and design platform.**
 
-StructuraLab is an early-stage engineering software project. The current release
-provides a transparent 2D linear-elastic frame solver, independent load cases,
-user-defined linear load combinations, automatic member self-weight, and sampled
-local member-force diagrams.
+StructuraLab is an early-stage structural engineering software project. Version
+0.5.0 provides a transparent 2D linear-elastic frame solver, independent load
+cases, user-defined linear load combinations, automatic member self-weight,
+sampled local member-force diagrams, structural model validation, global
+equilibrium auditing, and independent OpenSeesPy verification benchmarks.
 
 > **Engineering-use notice:** This project is not approved for design, permitting,
 > or construction use. Results require independent verification by a qualified
 > structural engineer. The load combinations are user-defined; no jurisdictional
 > or ACI load-factor set is asserted by the software.
 
-## Current implementation (v0.3.0)
+## Current implementation (v0.5.0)
+
+### Structural analysis
 
 - 2D Euler-Bernoulli frame elements with `ux`, `uy`, and `rz` at each node.
 - Local/global stiffness transformation and direct-stiffness assembly.
@@ -23,15 +27,41 @@ local member-force diagrams.
 - Automatic member self-weight from material density, section area, and gravity.
 - Reactions, displacements, and local member-end actions for each combination.
 - Sampled local axial-force, shear-force, and bending-moment diagram ordinates.
-- SI units: m, N, Pa, kg/m³; rotations in radians.
+
+### Validation and verification
+
+- Structural model validation for node, element, material, section, restraint,
+  and load references and properties.
+- Numerical input checks for invalid shapes and non-finite values.
+- Global horizontal-force, vertical-force, and moment equilibrium auditing.
+- Configurable absolute and relative equilibrium tolerances.
+- Independent OpenSeesPy comparison benchmarks for:
+  - Cantilever tip point loading.
+  - Uniformly distributed member loading.
+  - Inclined cantilever members under combined global horizontal and vertical
+    tip loading.
+- Analytical comparisons against closed-form cantilever solutions.
+
+### Units and conventions
+
+- SI units: m, N, Pa, kg/m³.
+- Rotations in radians.
+- Global +X is right and global +Y is up.
 
 ## Quick start
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 pytest
+```
+
+OpenSeesPy is an optional dependency for the independent verification tests.
+Install it separately if you want to run those benchmarks:
+
+```bash
+python -m pip install openseespy
 ```
 
 ## Load cases and combinations
@@ -68,11 +98,40 @@ print(uls.diagrams[1].moment)
 The factors above are illustrative user inputs, **not** a claim that they are
 appropriate for a particular code, occupancy, jurisdiction, or design situation.
 
+## Global equilibrium auditing
+
+The equilibrium auditing module checks whether the applied global load vector
+and support reactions balance in:
+
+- Horizontal force.
+- Vertical force.
+- Moment about the global origin.
+
+Example:
+
+```python
+from structuralab.equilibrium import audit_global_equilibrium
+from structuralab.solver import solve_linear_static
+
+result = solve_linear_static(model)
+audit = audit_global_equilibrium(model, result)
+
+print(audit.horizontal_force_residual)
+print(audit.vertical_force_residual)
+print(audit.moment_residual)
+print(audit.is_equilibrated)
+```
+
+The audit uses configurable absolute and relative tolerances. Passing the audit
+indicates numerical global equilibrium within those tolerances; it does not
+establish structural adequacy, stability, code compliance, or design safety.
+
 ## Engineering conventions and limitations
 
 - Global +X is right, global +Y is up, and positive nodal rotation is
   counter-clockwise.
-- Local element +x points from i-node to j-node; local +y is 90° counter-clockwise.
+- Local element +x points from i-node to j-node; local +y is 90 degrees
+  counter-clockwise.
 - `qx` and `qy` are constant local-axis loads in N/m and accumulate within a case.
 - Material density is kg/m³. Density defaults to zero; requesting self-weight
   without a positive density raises an error rather than assuming a material value.
@@ -92,8 +151,8 @@ appropriate for a particular code, occupancy, jurisdiction, or design situation.
 
 1. Foundation: 2D frame model, direct-stiffness solver, analytical tests.
 2. Loading/results: load cases, combinations, self-weight, N/V/M diagrams.
-3. Verification: additional frame benchmarks, mesh/refinement studies, independent
-   solver comparisons, and documented numerical tolerances.
+3. Verification: expanded frame benchmarks, independent solver comparisons,
+   equilibrium auditing, and documented numerical tolerances.
 4. ACI design: edition-pinned concrete beam flexure/shear checks, then column P-M
    interaction and detailing checks.
 5. Application: API, persistence, browser-based modelling, and reporting.

@@ -1,3 +1,4 @@
+
 name: Python CI
 
 on:
@@ -14,5 +15,6 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
+      - run: python -m pip install openseespy
       - run: pytest
       - run: ruff check .
